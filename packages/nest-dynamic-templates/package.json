@@ -1,6 +1,6 @@
 {
   "name": "@ackplus/nest-dynamic-templates",
-  "version": "1.1.15",
+  "version": "1.1.10",
   "description": "A powerful and flexible database seeding library for NestJS applications with support for factories, data generation using Faker.js, and CLI commands",
   "author": "AckPlus",
   "license": "MIT",
