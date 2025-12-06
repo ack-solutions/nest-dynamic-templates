@@ -4,8 +4,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { User } from './database/entities/user.entity';
 import { Post } from './database/entities/post.entity';
-import { UserSeeder } from './database/seeders/user.seeder';
-import { PostSeeder } from './database/seeders/post.seeder';
 
 @Module({
   imports: [
