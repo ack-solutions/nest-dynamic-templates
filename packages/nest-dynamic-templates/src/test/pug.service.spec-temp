@@ -1,0 +1,254 @@
+import { DataSource, Repository } from 'typeorm';
+import { createTestModule } from './test.setup';
+import { TemplateService } from '../lib/services/template.service';
+import { NestDynamicTemplate } from '../lib/entities/template.entity';
+import { TemplateTypeEnum, TemplateEngineEnum, TemplateLanguageEnum } from '../lib/interfaces/template.types';
+import { CreateTemplateDto } from '../lib/dto/create-template.dto';
+import { engineFilters } from './helpers';
+
+describe('Pug Engine', () => {
+    let service: TemplateService;
+    let dataSource: DataSource;
+    let templateRepository: Repository<NestDynamicTemplate>;
+
+    const testTemplate: CreateTemplateDto = {
+        name: 'test-template',
+        displayName: 'Test Template',
+        content: 'p Hello #{name}!',
+        type: TemplateTypeEnum.EMAIL,
+        engine: TemplateEngineEnum.PUG,
+        language: TemplateLanguageEnum.HTML,
+        scope: 'system',
+        scopeId: null,
+        locale: 'en',
+        isActive: true
+    };
+
+    beforeEach(async () => {
+        const moduleRef = await createTestModule({
+            engines: {
+                template: [TemplateEngineEnum.PUG],
+            },
+            enginesOptions: {
+                filters: engineFilters,
+                template: {
+                    [TemplateEngineEnum.PUG]: {
+                        pretty: true,
+                        compileDebug: true
+                    }
+                }
+            }
+        });
+
+        service = moduleRef.get<TemplateService>(TemplateService);
+        dataSource = moduleRef.get<DataSource>(DataSource);
+        templateRepository = dataSource.getRepository(NestDynamicTemplate);
+    });
+
+    afterEach(async () => {
+        // Clean up templates
+        await templateRepository.delete('1 = 1');
+
+        // Clean up database after each test
+        await dataSource.synchronize(true);
+    });
+
+    afterAll(async () => {
+        // Close the connection after all tests
+        await dataSource.destroy();
+    });
+
+    describe('Pug Custom Filters', () => {
+        it('should format date using custom date filter', async () => {
+            const template = await service.createTemplate({
+                ...testTemplate,
+                name: 'date-template',
+                content: 'p Today is #{formatDate(date, "YYYY-MM-DD")}',
+            });
+
+            const today = new Date();
+            const expectedDate = today.toISOString().split('T')[0];
+
+            const result = await service.render({
+                type: TemplateTypeEnum.EMAIL,
+                name: 'date-template',
+                scope: 'system',
+                context: {
+                    date: today
+                }
+            });
+
+            expect(result.content).toBe(`<p>Today is ${expectedDate}</p>`);
+        });
+
+        it('should format currency using custom currency filter', async () => {
+            const template = await service.createTemplate({
+                ...testTemplate,
+                name: 'currency-template',
+                content: 'p Price: #{formatCurrency(amount, "USD")}',
+            });
+
+            const result = await service.render({
+                type: TemplateTypeEnum.EMAIL,
+                name: 'currency-template',
+                scope: 'system',
+                context: {
+                    amount: 1234.56
+                }
+            });
+
+            expect(result.content).toBe('<p>Price: $1,234.56</p>');
+        });
+
+        it('should handle multiple filters in the same template', async () => {
+            const template = await service.createTemplate({
+                ...testTemplate,
+                name: 'multi-filter-template',
+                content: 'p Order placed on #{formatDate(date, "YYYY-MM-DD")} for #{formatCurrency(amount, "USD")}',
+            });
+
+            const today = new Date();
+            const expectedDate = today.toISOString().split('T')[0];
+
+            const result = await service.render({
+                type: TemplateTypeEnum.EMAIL,
+                name: 'multi-filter-template',
+                scope: 'system',
+                context: {
+                    date: today,
+                    amount: 1234.56
+                }
+            });
+
+            expect(result.content).toBe(`<p>Order placed on ${expectedDate} for $1,234.56</p>`);
+        });
+
+        it('should handle different currency formats', async () => {
+            const template = await service.createTemplate({
+                ...testTemplate,
+                name: 'currency-formats-template',
+                content: 'p USD: #{formatCurrency(usd, "USD")}, EUR: #{formatCurrency(eur, "EUR")}',
+            });
+
+            const result = await service.render({
+                type: TemplateTypeEnum.EMAIL,
+                name: 'currency-formats-template',
+                scope: 'system',
+                context: {
+                    usd: 1234.56,
+                    eur: 1234.56
+                }
+            });
+
+            expect(result.content).toBe('<p>USD: $1,234.56, EUR: €1,234.56</p>');
+        });
+
+        it('should handle different date formats', async () => {
+            const template = await service.createTemplate({
+                ...testTemplate,
+                name: 'date-formats-template',
+                content: 'p Short: #{formatDate(date, "MM/DD/YY")}, Long: #{formatDate(date, "MMMM D, YYYY")}, ISO: #{formatDate(date, "YYYY-MM-DD")}',
+            });
+
+            const date = new Date('2024-03-15');
+            const result = await service.render({
+                type: TemplateTypeEnum.EMAIL,
+                name: 'date-formats-template',
+                scope: 'system',
+                context: {
+                    date: date
+                }
+            });
+
+            expect(result.content).toBe('<p>Short: 03/15/24, Long: March 15, 2024, ISO: 2024-03-15</p>');
+        });
+    });
+
+    describe('Pug HTML Features', () => {
+        // Custom matcher to check HTML structure
+        const expectHtmlStructure = (received: string, expected: string) => {
+            const normalizeHtml = (html: string) => {
+                return html
+                    .replace(/\s+/g, ' ')
+                    .replace(/>\s+</g, '><')
+                    .trim();
+            };
+
+            const receivedNormalized = normalizeHtml(received);
+            const expectedNormalized = normalizeHtml(expected);
+
+            // Extract attributes and compare them regardless of order
+            const getAttributes = (html: string) => {
+                const match = html.match(/<[^>]+>/);
+                if (!match) return [];
+                return match[0]
+                    .replace(/<[^\s>]+/, '')
+                    .replace(/>$/, '')
+                    .trim()
+                    .split(/\s+/)
+                    .sort();
+            };
+
+            const receivedAttrs = getAttributes(receivedNormalized);
+            const expectedAttrs = getAttributes(expectedNormalized);
+
+            expect(receivedAttrs).toEqual(expectedAttrs);
+            expect(receivedNormalized.replace(/<[^>]+>/, '')).toBe(expectedNormalized.replace(/<[^>]+>/, ''));
+        };
+
+        it('should render nested HTML tags', async () => {
+            const template = await service.createTemplate({
+                ...testTemplate,
+                name: 'nested-html-template',
+                content: 'div\n  h1 Title\n  p This is a paragraph.'
+            });
+
+            const result = await service.render({
+                type: TemplateTypeEnum.EMAIL,
+                name: 'nested-html-template',
+                scope: 'system',
+                context: {}
+            });
+
+            expect(result.content.replace(/\n/g, ''))
+                .toBe('<div><h1>Title</h1><p>This is a paragraph.</p></div>');
+        });
+
+        it('should render HTML with attributes', async () => {
+            const template = await service.createTemplate({
+                ...testTemplate,
+                name: 'attributes-html-template',
+                content: 'a(href="https://example.com" target="_blank") Example Link'
+            });
+
+            const result = await service.render({
+                type: TemplateTypeEnum.EMAIL,
+                name: 'attributes-html-template',
+                scope: 'system',
+                context: {}
+            });
+
+            expect(result.content).toBe('<a href="https://example.com" target="_blank">Example Link</a>');
+        });
+
+        it('should render HTML with classes and ids', async () => {
+            const template = await service.createTemplate({
+                ...testTemplate,
+                name: 'class-id-html-template',
+                content: 'div#main.container Main content'
+            });
+
+            const result = await service.render({
+                type: TemplateTypeEnum.EMAIL,
+                name: 'class-id-html-template',
+                scope: 'system',
+                context: {}
+            });
+
+            expectHtmlStructure(
+                result.content,
+                '<div class="container" id="main">Main content</div>'
+            );
+        });
+    });
+});
