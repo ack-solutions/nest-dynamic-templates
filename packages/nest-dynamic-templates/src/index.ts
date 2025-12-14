@@ -15,9 +15,11 @@ export * from './lib/interfaces/template.types';
 // DTOs
 export * from './lib/dto/create-template.dto';
 export * from './lib/dto/render-template.dto';
+export * from './lib/dto/render-content-template.dto';
 export * from './lib/dto/template-filter.dto';
 export * from './lib/dto/create-template-layout.dto';
 export * from './lib/dto/render-template-layout.dto';
+export * from './lib/dto/render-content-template-layout.dto';
 export * from './lib/dto/template-layout-filter.dto';
 
 
