@@ -7,10 +7,25 @@ export * from './lib/nest-dynamic-templates.module';
 export * from './lib/services/template.service';
 export * from './lib/services/template-layout.service';
 export * from './lib/services/template-config.service';
+export * from './lib/services/template-engine.registry';
 
 // Interfaces
 export * from './lib/interfaces/module-config.interface';
 export * from './lib/interfaces/template.types';
+
+// Entities
+export * from './lib/entities/template.entity';
+export * from './lib/entities/template-layout.entity';
+
+// Errors
+export * from './lib/errors/template.errors';
+
+// Constants
+export * from './lib/constant';
+
+// Engines (for custom engine implementation)
+export * from './lib/engines/template-engine';
+export * from './lib/engines/language-engine';
 
 // DTOs
 export * from './lib/dto/create-template.dto';
