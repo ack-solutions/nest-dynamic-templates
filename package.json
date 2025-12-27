@@ -5,11 +5,9 @@
   "main": "index.js",
   "private": true,
   "scripts": {
-    "build:packages": "pnpm -C packages/nest-dynamic-templates build",
-    "build:example": "pnpm -C apps/example-app build",
-    "build": "pnpm build:packages && pnpm build:example",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "publish": "node scripts/publish.js"
+    "nest-dynamic-templates": "pnpm -C packages/nest-dynamic-templates",
+    "example": "pnpm -C apps/example-app",
+    "build": "pnpm nest-dynamic-templates build"
   },
   "keywords": [],
   "author": "",
