@@ -32,6 +32,13 @@ export class NunjucksEngine extends TemplateEngine {
                 this.registerFilter(name, filter);
             });
         }
+
+        // Register globalValues immediately (can be strings, numbers, objects, or functions)
+        if (this.customOptions?.globalValues) {
+            Object.entries(this.customOptions.globalValues).forEach(([name, value]) => {
+                this.registerGlobal(name, value);
+            });
+        }
     }
 
     async render(content: string, data?: Record<string, any>): Promise<string> {
@@ -64,7 +71,7 @@ export class NunjucksEngine extends TemplateEngine {
         this.env.addFilter(name, filter);
     }
 
-    registerGlobal(name: string, global: (...args: any[]) => any) {
+    registerGlobal(name: string, global: any) {
         this.env.addGlobal(name, global);
     }
 }

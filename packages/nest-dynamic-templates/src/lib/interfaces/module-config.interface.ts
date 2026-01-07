@@ -17,7 +17,7 @@ export type EngineOptions<T> = T & {
 
 export type CustomEngineOptions = {
     filters?: Record<string, FilterOptions['filter']>;
-    globalValues?: Record<string, (...args: any) => any>;
+    globalValues?: Record<string, any>; // Can be strings, numbers, objects, or functions
 };
 
 export interface NestDynamicTemplatesModuleConfig {
