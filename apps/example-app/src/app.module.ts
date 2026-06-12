@@ -1,20 +1,35 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import {
+  NestDynamicTemplatesModule,
+  TemplateEngineEnum,
+  TemplateLanguageEnum,
+} from '@ackplus/nest-dynamic-templates';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { User } from './database/entities/user.entity';
-import { Post } from './database/entities/post.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forRoot({
-      type: 'sqlite',
-      database: 'database.sqlite',
-      entities: [User, Post],
+      type: 'better-sqlite3',
+      database: 'example.sqlite',
+      autoLoadEntities: true, // picks up the library's entities
       synchronize: true,
-      logging: false,
     }),
-    TypeOrmModule.forFeature([User, Post]),
+    NestDynamicTemplatesModule.forRoot({
+      isGlobal: true,
+      engines: {
+        template: [TemplateEngineEnum.NUNJUCKS],
+        language: [TemplateLanguageEnum.HTML, TemplateLanguageEnum.MJML],
+      },
+      // Custom filters/globals are available in every engine.
+      filters: {
+        upper: (value: string) => String(value).toUpperCase(),
+      },
+      globals: {
+        brandName: 'Acme Inc.',
+      },
+    }),
   ],
   controllers: [AppController],
   providers: [AppService],

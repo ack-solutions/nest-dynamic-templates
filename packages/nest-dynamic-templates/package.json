@@ -1,7 +1,7 @@
 {
   "name": "@ackplus/nest-dynamic-templates",
-  "version": "1.1.16",
-  "description": "A powerful and flexible dynamic template rendering library for NestJS applications with support for Nunjucks, Handlebars, EJS, MJML, and more.",
+  "version": "2.0.0",
+  "description": "A powerful and flexible dynamic template rendering library for NestJS applications with support for Nunjucks, Handlebars, EJS, Pug, MJML, Markdown, and more.",
   "author": "AckPlus",
   "license": "MIT",
   "main": "dist/index.js",
@@ -9,6 +9,8 @@
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
+    "MIGRATION.md",
     "LICENSE"
   ],
   "keywords": [
@@ -42,25 +44,18 @@
   "peerDependencies": {
     "@nestjs/common": "^10.0.0 || ^11.0.0",
     "@nestjs/core": "^10.0.0 || ^11.0.0",
-    "@faker-js/faker": "^9.0.0 || ^10.0.0",
     "reflect-metadata": "^0.2",
     "handlebars": "^4.7.0",
     "mjml": "^4.14.0",
     "ejs": "^3.1.0",
     "nunjucks": "^3.2.0",
     "pug": "^3.0.0",
+    "marked": "^12.0.0 || ^13.0.0 || ^14.0.0 || ^15.0.0",
     "@nestjs/swagger": "^7.0.0 || ^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0",
     "typeorm": "^0.3.0",
-    "@nestjs/typeorm": "^10.0.0 || ^11.0.0",
-    "htmlparser2": "^9.0.0"
+    "@nestjs/typeorm": "^10.0.0 || ^11.0.0"
   },
   "peerDependenciesMeta": {
-    "ts-node": {
-      "optional": true
-    },
-    "typescript": {
-      "optional": true
-    },
     "handlebars": {
       "optional": true
     },
@@ -76,7 +71,7 @@
     "pug": {
       "optional": true
     },
-    "htmlparser2": {
+    "marked": {
       "optional": true
     },
     "@nestjs/swagger": {
@@ -91,15 +86,12 @@
   },
   "dependencies": {
     "lodash": "^4.17.21",
-    "yargs": "^17.7.2",
     "class-validator": "^0.14.0",
-    "class-transformer": "^0.5.1",
-    "deepmerge": "^4.3.1"
+    "class-transformer": "^0.5.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
-    "@faker-js/faker": "^9.9.0",
     "@nestjs-modules/ioredis": "^2.0.0",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/common": "^11.0.1",
@@ -116,7 +108,6 @@
     "@types/nunjucks": "^3.2.0",
     "@types/pug": "^2.0.0",
     "@types/supertest": "^6.0.2",
-    "@types/htmlparser2": "^3.10.0",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",
@@ -130,12 +121,13 @@
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
+    "better-sqlite3": "^11.3.0",
+    "marked": "^14.0.0",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0",
     "typeorm": "^0.3.20",
     "@nestjs/typeorm": "^10.0.2",
-    "@nestjs/swagger": "^8.1.0",
-    "htmlparser2": "^9.1.0"
+    "@nestjs/swagger": "^8.1.0"
   },
   "jest": {
     "moduleFileExtensions": [
@@ -146,7 +138,12 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": "tsconfig.spec.json"
+        }
+      ]
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"

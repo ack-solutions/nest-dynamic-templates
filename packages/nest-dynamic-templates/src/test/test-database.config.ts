@@ -4,7 +4,7 @@ import { NestDynamicTemplate } from '../lib/entities/template.entity';
 import { NestDynamicTemplateLayout } from '../lib/entities/template-layout.entity';
 
 export const testDatabaseConfig: TypeOrmModuleOptions = {
-    type: 'sqlite',
+    type: 'better-sqlite3',
     database: ':memory:',
     entities: [NestDynamicTemplate, NestDynamicTemplateLayout],
     logging: ['error', 'warn'],

@@ -1,112 +1,58 @@
-import { Injectable } from '@nestjs/common';
-import { NestDynamicTemplatesModuleConfig } from '../interfaces/module-config.interface';
+import { Inject, Injectable } from '@nestjs/common';
+import type {
+    ResolvedTemplatesConfig,
+    TemplateFilter,
+} from '../interfaces/module-config.interface';
 import { TemplateEngineEnum, TemplateLanguageEnum } from '../interfaces/template.types';
+import { NEST_DYNAMIC_TEMPLATES_OPTIONS } from '../constant';
 
+/**
+ * Read-only accessor over the fully-resolved module configuration.
+ *
+ * Injectable (no global mutable state), so it works correctly with both
+ * `forRoot()` and `forRootAsync()`.
+ */
 @Injectable()
 export class TemplateConfigService {
-    private static config: NestDynamicTemplatesModuleConfig;
+    constructor(
+        @Inject(NEST_DYNAMIC_TEMPLATES_OPTIONS)
+        private readonly config: ResolvedTemplatesConfig,
+    ) {}
 
-    private static readonly defaultConfig: NestDynamicTemplatesModuleConfig = {
-        engines: {
-            template: [TemplateEngineEnum.NUNJUCKS],
-            language: [TemplateLanguageEnum.HTML, TemplateLanguageEnum.MJML, TemplateLanguageEnum.TEXT]
-        }
-    };
-
-    /**
-     * Set the configuration options
-     */
-    static setOptions(config: NestDynamicTemplatesModuleConfig): void {
-        this.config = { ...this.defaultConfig, ...config };
-    }
-
-    /**
-     * Get the current configuration options
-     */
-    static getOptions(): NestDynamicTemplatesModuleConfig {
-        if (!this.config) {
-            return this.defaultConfig;
-        }
+    /** The full resolved configuration. */
+    getOptions(): ResolvedTemplatesConfig {
         return this.config;
     }
 
-    /**
-     * Check if configuration has been set
-     */
-    static hasConfig(): boolean {
-        return !!this.config;
+    isTemplateEngineEnabled(engine: TemplateEngineEnum): boolean {
+        return this.config.engines.template.includes(engine);
     }
 
-    /**
-     * Reset configuration to default
-     */
-    static reset(): void {
-        this.config = { ...this.defaultConfig };
+    isLanguageEngineEnabled(language: TemplateLanguageEnum): boolean {
+        return this.config.engines.language.includes(language);
     }
 
-    /**
-     * Get a specific configuration value
-     */
-    static get<K extends keyof NestDynamicTemplatesModuleConfig>(
-        key: K
-    ): NestDynamicTemplatesModuleConfig[K] {
-        const config = this.getOptions();
-        return config[key];
+    getEnabledTemplateEngines(): TemplateEngineEnum[] {
+        return this.config.engines.template;
     }
 
-    /**
-     * Check if a template engine is enabled
-     */
-    static isTemplateEngineEnabled(engine: TemplateEngineEnum): boolean {
-        const config = this.getOptions();
-        return config.engines?.template?.includes(engine) ?? false;
+    getEnabledLanguageEngines(): TemplateLanguageEnum[] {
+        return this.config.engines.language;
     }
 
-    /**
-     * Check if a language engine is enabled
-     */
-    static isLanguageEngineEnabled(language: TemplateLanguageEnum): boolean {
-        const config = this.getOptions();
-        return config.engines?.language?.includes(language) ?? false;
+    getTemplateEngineOptions(engine: TemplateEngineEnum): Record<string, any> {
+        return this.config.engineOptions.template[engine] ?? {};
     }
 
-    /**
-     * Get enabled template engines
-     */
-    static getEnabledTemplateEngines(): TemplateEngineEnum[] {
-        const config = this.getOptions();
-        return config.engines?.template ?? this.defaultConfig.engines!.template!;
+    getLanguageEngineOptions(language: TemplateLanguageEnum): Record<string, any> {
+        return this.config.engineOptions.language[language] ?? {};
     }
 
-    /**
-     * Get enabled language engines
-     */
-    static getEnabledLanguageEngines(): TemplateLanguageEnum[] {
-        const config = this.getOptions();
-        return config.engines?.language ?? this.defaultConfig.engines!.language!;
+    getFilters(): Record<string, TemplateFilter> {
+        return this.config.filters;
     }
 
-    /**
-     * Get engine options for a specific template engine
-     */
-    static getTemplateEngineOptions(engine: TemplateEngineEnum): any {
-        const config = this.getOptions();
-        return config.enginesOptions?.template?.[engine];
-    }
-
-    /**
-     * Get engine options for a specific language engine
-     */
-    static getLanguageEngineOptions(language: TemplateLanguageEnum): any {
-        const config = this.getOptions();
-        return config.enginesOptions?.language?.[language];
-    }
-
-    /**
-     * Get custom filters
-     */
-    static getCustomFilters(): Record<string, Function> {
-        const config = this.getOptions();
-        return config.enginesOptions?.filters ?? {};
+    getGlobals(): Record<string, any> {
+        return this.config.globals;
     }
 }

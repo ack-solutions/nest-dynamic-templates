@@ -1,41 +1,21 @@
-import { IsString, IsEnum, IsObject, IsOptional, IsNotEmpty, Matches, ValidateIf } from 'class-validator';
-import { TemplateLanguageEnum, TemplateTypeEnum } from '../interfaces/template.types';
+import { IsString, IsObject, IsOptional, IsNotEmpty } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-
+/**
+ * Render a stored template by name. To render a raw string instead, use
+ * `TemplateService.renderContent()` with {@link RenderContentTemplateDto}.
+ */
 export class RenderTemplateDto {
-
-    @ApiPropertyOptional({
-        type: String,
-        default: 'en',
-        description: 'The locale code, i.e en, fr, es, etc.'
-    })
-    @IsString()
-    @IsOptional()
-    locale?: string = 'en';
-
-    @ApiProperty({ type: String })
+    @ApiProperty({ type: String, description: 'Name of the stored template to render.' })
     @IsString()
     @IsNotEmpty()
-    @ValidateIf((object, value) => !object?.content)
-    name?: string;
-
-    @ApiProperty({ type: String })
-    @IsString()
-    @IsNotEmpty()
-    @ValidateIf((object, value) => !object?.name)
-    content?: string;
-
-    @ApiProperty({ enum: TemplateLanguageEnum, type: String })
-    @IsEnum(TemplateLanguageEnum)
-    @IsNotEmpty()
-    @ValidateIf((object, value) => !object?.name)
-    language?: TemplateLanguageEnum;
+    name: string;
 
     @ApiPropertyOptional({
         type: String,
         default: 'system',
-        description: 'The scope of the template, i.e user, organization, etc.'
+        description:
+            'Who owns the version to resolve: "system" (default) or a custom owner kind like "tenant"/"user". Falls back to "system" if no override exists.',
     })
     @IsString()
     @IsOptional()
@@ -43,8 +23,7 @@ export class RenderTemplateDto {
 
     @ApiPropertyOptional({
         type: String,
-        default: null,
-        description: 'The scope id of the template, i.e user id, organization id, etc.'
+        description: 'Which owner inside the scope (e.g. the tenant/user id).',
     })
     @IsString()
     @IsOptional()
@@ -52,23 +31,29 @@ export class RenderTemplateDto {
 
     @ApiPropertyOptional({
         type: String,
-        nullable: true,
-        description: 'The context of the template'
+        default: 'en',
+        description: 'Locale code, e.g. en, fr, es. Falls back to "en".',
+    })
+    @IsString()
+    @IsOptional()
+    locale?: string = 'en';
+
+    @ApiPropertyOptional({
+        type: Object,
+        description: 'Data passed to the template (the render context).',
     })
     @IsObject()
     @IsOptional()
     context?: Record<string, any>;
 }
 
-
 export class RenderTemplateOutputDTO {
     @ApiProperty({ type: String })
     @IsString()
-    @IsNotEmpty()
     content: string;
 
-    @ApiProperty({ type: String })
+    @ApiProperty({ type: String, nullable: true, description: 'Rendered subject, or null if the template has none.' })
+    @IsOptional()
     @IsString()
-    @IsNotEmpty()
-    subject: string;
+    subject: string | null;
 }

@@ -9,21 +9,23 @@ export * from './lib/services/template-layout.service';
 export * from './lib/services/template-config.service';
 export * from './lib/services/template-engine.registry';
 
-// Interfaces
+// Interfaces & config
 export * from './lib/interfaces/module-config.interface';
 export * from './lib/interfaces/template.types';
+export * from './lib/config/resolve-config';
 
 // Entities
 export * from './lib/entities/template.entity';
 export * from './lib/entities/template-layout.entity';
 
-// Errors
+// Errors & diagnostics
 export * from './lib/errors/template.errors';
+export * from './lib/errors/diagnose';
 
 // Constants
 export * from './lib/constant';
 
-// Engines (for custom engine implementation)
+// Engines (base classes for custom engine implementation)
 export * from './lib/engines/template-engine';
 export * from './lib/engines/language-engine';
 
@@ -36,7 +38,6 @@ export * from './lib/dto/create-template-layout.dto';
 export * from './lib/dto/render-template-layout.dto';
 export * from './lib/dto/render-content-template-layout.dto';
 export * from './lib/dto/template-layout-filter.dto';
-
 
 export const NestDynamicTemplatesEntities = [
     NestDynamicTemplate,

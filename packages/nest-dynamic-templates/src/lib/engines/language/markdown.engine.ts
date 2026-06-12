@@ -1,37 +1,35 @@
-import { Injectable } from '@nestjs/common';
 import { TemplateLanguageEnum } from '../../interfaces/template.types';
 import { LanguageEngine } from '../language-engine';
+import { loadPeer } from '../load-peer';
 
-@Injectable()
+/**
+ * Markdown processor backed by `marked` (lazy, optional peer). Converts the
+ * interpolated Markdown into HTML.
+ */
 export class MarkdownEngine extends LanguageEngine {
     static override engineName = TemplateLanguageEnum.MARKDOWN;
+    static override displayName = 'Markdown';
+    static override peerPackage = 'marked';
 
-    private options: any; // Using any for now since marked types are causing issues
-
-    constructor(options?: any) {
+    constructor(private readonly options: Record<string, any> = {}) {
         super();
-        this.options = options;
     }
 
     async render(content: string): Promise<string> {
-        // try {
-        //     const { marked } = await import('marked');
-        //     return marked(content, this.options);
-        // } catch (error: any) {
-        //     throw new Error(`Failed to render Markdown: ${error?.message || 'Unknown error'}`);
-        // }
-        return content;
+        const mod = await loadPeer<any>('marked', 'md', 'language');
+        const marked = mod.marked ?? mod.default ?? mod;
+        const out = typeof marked.parse === 'function'
+            ? marked.parse(content, this.options)
+            : marked(content, this.options);
+        return typeof out === 'string' ? out : await out;
     }
 
     async validate(content: string): Promise<boolean> {
-        // try {
-        //     const { marked } = await import('marked');
-        //     // Basic Markdown validation - check for common syntax errors
-        //     marked(content, this.options);
-        //     return true;
-        // } catch (error) {
-        //     return false;
-        // }
-        return true;
+        try {
+            await this.render(content);
+            return true;
+        } catch {
+            return false;
+        }
     }
 }

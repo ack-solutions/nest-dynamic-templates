@@ -1,243 +1,163 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Equal, In, IsNull, Not, Repository } from 'typeorm';
 import { NestDynamicTemplateLayout } from '../entities/template-layout.entity';
-import { TemplateEngineEnum, TemplateLanguageEnum, TemplateTypeEnum } from '../interfaces/template.types';
 import { TemplateLayoutFilterDto } from '../dto/template-layout-filter.dto';
 import { TemplateEngineRegistryService } from './template-engine.registry';
 import { RenderTemplateLayoutDto, RenderTemplateLayoutOutput } from '../dto/render-template-layout.dto';
 import { CreateTemplateLayoutDto } from '../dto/create-template-layout.dto';
 import { RenderContentTemplateLayoutDto } from '../dto/render-content-template-layout.dto';
 import {
-    TemplateRenderError,
-    TemplateEngineError,
-    TemplateLanguageError,
+    TemplateConflictError,
+    TemplateForbiddenError,
+    TemplateInputError,
+    TemplateNotFoundError,
+    isTemplateError,
 } from '../errors/template.errors';
+import { diagnoseRenderError, RenderContextMeta } from '../errors/diagnose';
 
 @Injectable()
 export class TemplateLayoutService {
     constructor(
         @InjectRepository(NestDynamicTemplateLayout)
         private readonly layoutRepository: Repository<NestDynamicTemplateLayout>,
-        private readonly engineRegistry: TemplateEngineRegistryService
+        private readonly engineRegistry: TemplateEngineRegistryService,
     ) { }
 
-
+    /**
+     * Render a stored layout. The wrapped content is expected on `context.content`.
+     */
     async render(renderDto: RenderTemplateLayoutDto): Promise<RenderTemplateLayoutOutput> {
-        const { name, scope, scopeId, locale, context } = renderDto;
+        const { name, scopeId, locale, context } = renderDto;
+        const scope = renderDto.scope || 'system';
 
-        try {
-            // Find template with fallback
-            const templateLayout = await this.findTemplateLayout(name, scope, scopeId, locale);
-            if (!templateLayout) {
-                throw new NotFoundException(`Template layout not found: ${name} in scope ${scope || 'system'}`);
-            }
-
-            // Validate content exists
-            if (!templateLayout.content) {
-                throw new BadRequestException(`Template layout '${name}' has no content to render`);
-            }
-
-            let content = templateLayout.content;
-
-            // Render content by template engine
-            if (templateLayout.engine) {
-                try {
-                    content = await this.renderEngine(templateLayout.engine, content, context || {});
-                } catch (error) {
-                    throw new TemplateEngineError(templateLayout.engine, error as Error);
-                }
-            }
-
-            // If template has language format, process with language engine
-            if (templateLayout.language) {
-                try {
-                    content = await this.renderLanguage(templateLayout.language, content, context || {});
-                } catch (error) {
-                    throw new TemplateLanguageError(templateLayout.language, error as Error);
-                }
-            }
-
-            return {
-                content
-            };
-        } catch (error) {
-            // Re-throw known template errors
-            if (error instanceof TemplateEngineError ||
-                error instanceof TemplateLanguageError ||
-                error instanceof NotFoundException ||
-                error instanceof BadRequestException) {
-                throw error;
-            }
-
-            // Wrap unknown errors
-            throw new TemplateRenderError('template layout rendering', error as Error, name);
+        const layout = await this.findTemplateLayout(name, scope, scopeId, locale);
+        if (!layout) {
+            throw new TemplateNotFoundError({ templateName: name, scope, scopeId, locale, kind: 'layout' });
         }
+        if (!layout.content) {
+            throw new TemplateInputError(`Layout "${name}" has no content to render.`);
+        }
+
+        const ctx = context || {};
+        const meta = (stage: RenderContextMeta['stage']): RenderContextMeta => ({
+            stage,
+            engine: layout.engine,
+            language: layout.language,
+            templateName: name,
+            scope,
+            scopeId,
+            locale,
+        });
+
+        let content = layout.content;
+        if (layout.engine) {
+            try {
+                content = await this.engineRegistry.getTemplateEngine(layout.engine).render(content, ctx);
+            } catch (error) {
+                throw this.asRenderError(error, layout.content, ctx, meta('template-engine'));
+            }
+        }
+        if (layout.language) {
+            try {
+                content = await this.engineRegistry.getLanguageEngine(layout.language).render(content, ctx);
+            } catch (error) {
+                throw this.asRenderError(error, content, ctx, meta('language-engine'));
+            }
+        }
+
+        return { content };
     }
 
+    /** Render a raw layout content string directly. */
     async renderContent(input: RenderContentTemplateLayoutDto): Promise<string> {
         const { content, language, engine, context } = input;
+        const ctx = context || {};
 
-        try {
-            if (!content) {
-                throw new BadRequestException('Content is required for template layout rendering');
-            }
-
-            let renderContent = content;
-
-            // Render content by template engine
-            if (engine) {
-                try {
-                    renderContent = await this.renderEngine(engine, content, context || {});
-                } catch (error) {
-                    throw new TemplateEngineError(engine, error as Error);
-                }
-            }
-
-            // Render content by language engine
-            if (language) {
-                try {
-                    renderContent = await this.renderLanguage(language, renderContent, context || {});
-                } catch (error) {
-                    throw new TemplateLanguageError(language, error as Error);
-                }
-            }
-
-            return renderContent;
-        } catch (error) {
-            // Re-throw known template errors
-            if (error instanceof TemplateEngineError ||
-                error instanceof TemplateLanguageError ||
-                error instanceof BadRequestException) {
-                throw error;
-            }
-
-            // Wrap unknown errors
-            throw new TemplateRenderError('template layout content rendering', error as Error);
+        if (!content) {
+            throw new TemplateInputError('`content` is required for layout rendering.');
         }
+
+        let rendered = content;
+        if (engine) {
+            try {
+                rendered = await this.engineRegistry.getTemplateEngine(engine).render(content, ctx);
+            } catch (error) {
+                throw this.asRenderError(error, content, ctx, { stage: 'template-engine', engine, language });
+            }
+        }
+        if (language) {
+            try {
+                rendered = await this.engineRegistry.getLanguageEngine(language).render(rendered, ctx);
+            } catch (error) {
+                throw this.asRenderError(error, rendered, ctx, { stage: 'language-engine', engine, language });
+            }
+        }
+
+        return rendered;
     }
 
-    async renderLanguage(language: TemplateLanguageEnum, content: string, context: Record<string, any>): Promise<string> {
-        try {
-            if (!content) {
-                throw new BadRequestException('Content is required for language rendering');
-            }
-
-            const languageEngine = this.engineRegistry.getLanguageEngine(language);
-            if (!languageEngine) {
-                throw new BadRequestException(`Language engine not found for: ${language}`);
-            }
-
-            return await languageEngine.render(content, context);
-        } catch (error) {
-            if (error instanceof BadRequestException) {
-                throw error;
-            }
-            throw new TemplateLanguageError(language, error as Error);
-        }
-    }
-
-    async renderEngine(engine: TemplateEngineEnum, content: string, context: Record<string, any>): Promise<string> {
-        try {
-            if (!content) {
-                throw new BadRequestException('Content is required for engine rendering');
-            }
-
-            const templateEngine = this.engineRegistry.getTemplateEngine(engine);
-            if (!templateEngine) {
-                throw new BadRequestException(`Template engine not found for: ${engine}`);
-            }
-
-            return await templateEngine.render(content, context);
-        } catch (error) {
-            if (error instanceof BadRequestException) {
-                throw error;
-            }
-            throw new TemplateEngineError(engine, error as Error);
-        }
+    private asRenderError(
+        error: unknown,
+        source: string,
+        context: Record<string, any>,
+        meta: RenderContextMeta,
+    ): Error {
+        if (isTemplateError(error)) return error as unknown as Error;
+        return diagnoseRenderError(error, source, context, meta);
     }
 
     /**
-     * Get all templates, with scoped templates taking precedence over system templates
+     * Get all layouts, with scoped layouts taking precedence over system layouts
      */
     async getTemplateLayouts(filter: TemplateLayoutFilterDto = {}): Promise<NestDynamicTemplateLayout[]> {
-        const {
-            scope,
-            scopeId,
-            type,
-            locale,
-            excludeNames = [],
-        } = filter;
+        const { scope, scopeId, type, locale, excludeNames = [] } = filter;
 
-
-        // Build the where clause
         const where: any = {};
         if (type) where.type = type;
         if (locale) where.locale = locale;
         if (excludeNames.length > 0) where.name = Not(In(excludeNames));
 
         const systemTemplates = await this.layoutRepository.find({
-            where: {
-                ...where,
-                scope: 'system',
-                scopeId: IsNull(),
-            },
+            where: { ...where, scope: 'system', scopeId: IsNull() },
         });
 
         if (scope === 'system') {
             return systemTemplates;
         }
 
-        // First get all templates matching the filters
         const templates = await this.layoutRepository.find({
-            where: {
-                ...where,
-                scope: Equal(scope),
-                scopeId: scopeId as any,
-            },
-            order: {
-                createdAt: 'DESC',
-            },
+            where: { ...where, scope: Equal(scope), scopeId: scopeId as any },
+            order: { createdAt: 'DESC' },
         });
 
-        // Create a map to store unique templates by name+type
         const templateMap = new Map<string, NestDynamicTemplateLayout>();
-
         for (const template of systemTemplates) {
-            const key = `${template.type}/${template.name}/${template.locale}`;
-            templateMap.set(key, template);
+            templateMap.set(`${template.type}/${template.name}/${template.locale}`, template);
         }
-
         for (const template of templates) {
-            const key = `${template.type}/${template.name}/${template.locale}`;
-            templateMap.set(key, template);
+            templateMap.set(`${template.type}/${template.name}/${template.locale}`, template);
         }
 
-        // Convert map values back to array
         return Array.from(templateMap.values());
     }
 
     async getTemplateLayoutById(id: string): Promise<NestDynamicTemplateLayout | null> {
-        return this.layoutRepository.findOne({
-            where: { id },
-        });
+        return this.layoutRepository.findOne({ where: { id } });
     }
 
+    /**
+     * Resolve a layout by name (scope/locale fallback to system/'en').
+     * Only active layouts are considered.
+     */
     async findTemplateLayout(
         name: string,
         scope?: string,
         scopeId?: string,
-        locale?: string
+        locale?: string,
     ): Promise<NestDynamicTemplateLayout | null> {
-        // Try to find template in the following order:
-        // 1. Scoped template with locale
-        // 2. Scoped template without locale
-        // 3. System template with locale
-        // 4. System template without locale
-
         const locales = (locale ? [locale, 'en'] : ['en']).filter(Boolean);
 
-        // First try to find in the specified scope
         for (const currentLocale of locales) {
             const template = await this.layoutRepository.findOne({
                 where: {
@@ -245,15 +165,12 @@ export class TemplateLayoutService {
                     scope,
                     scopeId: scope === 'system' ? IsNull() : Equal(scopeId),
                     locale: currentLocale,
-                }
+                    isActive: true,
+                },
             });
-
-            if (template) {
-                return template;
-            }
+            if (template) return template;
         }
 
-        // If not found and not already in system scope, try system scope
         if (scope !== 'system') {
             for (const currentLocale of locales) {
                 const template = await this.layoutRepository.findOne({
@@ -262,12 +179,10 @@ export class TemplateLayoutService {
                         scope: 'system',
                         scopeId: IsNull(),
                         locale: currentLocale,
-                    }
+                        isActive: true,
+                    },
                 });
-
-                if (template) {
-                    return template;
-                }
+                if (template) return template;
             }
         }
 
@@ -275,51 +190,40 @@ export class TemplateLayoutService {
     }
 
     /**
-     * Create a system template. Only system templates can be created directly.
+     * Create a system layout. Only system layouts can be created directly.
      */
     async createTemplateLayout(data: CreateTemplateLayoutDto): Promise<NestDynamicTemplateLayout> {
-        // Ensure this is a system template
         if (data.scope !== 'system') {
-            throw new ForbiddenException('Only system templates can be created directly');
+            throw new TemplateForbiddenError('Only system layouts can be created directly.');
         }
 
-        // Check if template already exists
         const existingTemplate = await this.layoutRepository.findOne({
-            where: {
-                name: data.name,
-                scope: 'system',
-                scopeId: IsNull(),
-                locale: data.locale,
-            },
+            where: { name: data.name, scope: 'system', scopeId: IsNull(), locale: data.locale },
         });
-
         if (existingTemplate) {
-            throw new ConflictException(`System template already exists`);
+            throw new TemplateConflictError(
+                `A system layout "${data.name}" already exists for locale "${data.locale ?? 'en'}".`,
+            );
         }
 
-        const template = this.layoutRepository.create({
-            ...data,
-            scopeId: undefined, // Ensure system templates have no scopeId
-        });
-
+        const template = this.layoutRepository.create({ ...data, scopeId: undefined });
         return this.layoutRepository.save(template);
     }
 
-    async overwriteSystemTemplateLayout(templateId: string, updates: Partial<CreateTemplateLayoutDto>): Promise<NestDynamicTemplateLayout> {
-        let template = await this.layoutRepository.findOne({
-            where: { id: templateId },
-        });
-
+    async overwriteSystemTemplateLayout(
+        templateId: string,
+        updates: Partial<CreateTemplateLayoutDto>,
+    ): Promise<NestDynamicTemplateLayout> {
+        let template = await this.layoutRepository.findOne({ where: { id: templateId } });
         if (!template) {
-            throw new NotFoundException(`Template not found: ${templateId}`);
+            throw new TemplateNotFoundError({ templateName: templateId, kind: 'layout' });
         }
 
         if (template.scope === 'system') {
             if (!updates.scope) {
-                throw new BadRequestException('Scope is required when overwriting system template');
+                throw new TemplateInputError('`scope` is required when overwriting a system layout.');
             }
 
-            // Check if template already exists in target scope
             const existingTemplate = await this.layoutRepository.findOne({
                 where: {
                     name: template.name,
@@ -330,11 +234,9 @@ export class TemplateLayoutService {
             });
 
             if (existingTemplate) {
-                // Update existing template in target scope
                 template = existingTemplate;
             } else {
-                // Create new template in target scope
-                const newTemplate = this.layoutRepository.create({
+                template = this.layoutRepository.create({
                     ...template,
                     id: undefined,
                     createdAt: undefined,
@@ -342,7 +244,6 @@ export class TemplateLayoutService {
                     scope: updates.scope,
                     scopeId: updates.scopeId,
                 });
-                template = newTemplate;
             }
         }
 
@@ -351,55 +252,41 @@ export class TemplateLayoutService {
         return template;
     }
 
-
     /**
-     * Update a template
+     * Update a layout (same system-override semantics as templates).
      */
     async updateTemplateLayout(
         id: string,
         updates: Partial<CreateTemplateLayoutDto>,
         canUpdateSystemTemplate: boolean = false,
     ): Promise<NestDynamicTemplateLayout> {
-        // Find the template
-        let template = await this.layoutRepository.findOne({
-            where: { id },
-        });
-
+        let template = await this.layoutRepository.findOne({ where: { id } });
         if (!template) {
-            throw new NotFoundException(`Template not found: ${id}`);
+            throw new TemplateNotFoundError({ templateName: id, kind: 'layout' });
         }
 
-        // If it's a system template and we can't update it, try to overwrite it
         if (template.scope === 'system' && !canUpdateSystemTemplate) {
-
             if (updates.scope) {
-                // Otherwise, allow overwriting to custom scope
                 return this.overwriteSystemTemplateLayout(id, updates);
-            } else {
-                throw new ForbiddenException('Cannot update system templates');
             }
+            throw new TemplateForbiddenError('Cannot update a system layout directly.');
         }
 
-        // For regular updates
         template = this.layoutRepository.merge(template, updates);
         return this.layoutRepository.save(template);
     }
 
     /**
-     * Delete a scoped template
+     * Delete a layout. System layouts require `canDeleteSystemTemplate`.
      */
     async deleteTemplateLayout(id: string, canDeleteSystemTemplate: boolean = false): Promise<void> {
-        const template = await this.layoutRepository.findOne({
-            where: { id },
-        });
-
+        const template = await this.layoutRepository.findOne({ where: { id } });
         if (!template) {
-            throw new Error(`Template not found: ${id}`);
+            throw new TemplateNotFoundError({ templateName: id, kind: 'layout' });
         }
 
-        // Prevent deleting system templates
         if (template.scope === 'system' && !canDeleteSystemTemplate) {
-            throw new ForbiddenException('Cannot delete system templates');
+            throw new TemplateForbiddenError('Cannot delete a system layout.');
         }
 
         await this.layoutRepository.remove(template);

@@ -1,77 +1,62 @@
-import { omit } from 'lodash';
 import { TemplateEngineEnum } from '../../interfaces/template.types';
 import { TemplateEngine } from '../template-engine';
 import type { Environment, ConfigureOptions } from 'nunjucks';
-import { CustomEngineOptions, EngineOptions } from '../../interfaces/module-config.interface';
+import { CustomEngineOptions } from '../../interfaces/module-config.interface';
+import { loadPeer } from '../load-peer';
 
 export class NunjucksEngine extends TemplateEngine {
-
     static override engineName = TemplateEngineEnum.NUNJUCKS;
+    static override displayName = 'Nunjucks';
+    static override peerPackage = 'nunjucks';
 
-    private env: Environment;
+    private env?: Environment;
 
-    constructor(private options?: EngineOptions<ConfigureOptions>, private customOptions?: CustomEngineOptions) {
+    constructor(
+        private readonly options: ConfigureOptions = {},
+        private readonly customOptions: CustomEngineOptions = {},
+    ) {
         super();
-        this.initNunjucks();
     }
 
-    initNunjucks() {
-        const nunjucks = require('nunjucks');
+    /** Configure the Nunjucks environment once, on first use (lazy). */
+    private async getEnv(): Promise<Environment> {
+        if (this.env) return this.env;
 
-        const nunjucksOptions = omit(this.options, 'filters');
-
-        this.env = nunjucks.configure({
+        const nunjucks = await loadPeer<typeof import('nunjucks')>('nunjucks', 'njk', 'template');
+        const env = nunjucks.configure({
             autoescape: true,
             throwOnUndefined: true,
-            ...nunjucksOptions,
+            ...this.options,
         });
 
-        // Register filters immediately
-        if (this.customOptions?.filters) {
-            Object.entries(this.customOptions.filters).forEach(([name, filter]) => {
-                this.registerFilter(name, filter);
-            });
+        for (const [name, filter] of Object.entries(this.customOptions.filters ?? {})) {
+            env.addFilter(name, filter as any);
+        }
+        for (const [name, value] of Object.entries(this.customOptions.globals ?? {})) {
+            env.addGlobal(name, value);
         }
 
-        // Register globalValues immediately (can be strings, numbers, objects, or functions)
-        if (this.customOptions?.globalValues) {
-            Object.entries(this.customOptions.globalValues).forEach(([name, value]) => {
-                this.registerGlobal(name, value);
-            });
-        }
+        this.env = env;
+        return env;
     }
 
     async render(content: string, data?: Record<string, any>): Promise<string> {
-        try {
-            return new Promise((resolve, reject) => {
-                this.env.renderString(content, data || {}, (err: any, result: any) => {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve(result);
-                    }
-                });
+        const env = await this.getEnv();
+        // Let Nunjucks' own error (with [Line, Column]) propagate to the diagnoser.
+        return new Promise<string>((resolve, reject) => {
+            env.renderString(content, data || {}, (err, result) => {
+                if (err) reject(err);
+                else resolve(result ?? '');
             });
-        } catch (error: any) {
-            throw new Error(`Failed to render Nunjucks template: ${error?.message || 'Unknown error'}`);
-        }
+        });
     }
 
     async validate(content: string): Promise<boolean> {
         try {
-            // Use renderString with empty data to validate the template
             await this.render(content, {});
             return true;
-        } catch (error) {
+        } catch {
             return false;
         }
-    }
-
-    registerFilter(name: string, filter: (...args: any[]) => any) {
-        this.env.addFilter(name, filter);
-    }
-
-    registerGlobal(name: string, global: any) {
-        this.env.addGlobal(name, global);
     }
 }

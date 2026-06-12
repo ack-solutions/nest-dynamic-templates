@@ -1,34 +1,50 @@
 import { TemplateEngineEnum } from '../../interfaces/template.types';
 import { TemplateEngine } from '../template-engine';
-import { EngineOptions } from '../../interfaces/module-config.interface';
+import { CustomEngineOptions } from '../../interfaces/module-config.interface';
+import { loadPeer } from '../load-peer';
 
 export class HandlebarsEngine extends TemplateEngine {
-
     static override engineName = TemplateEngineEnum.HANDLEBARS;
+    static override displayName = 'Handlebars';
+    static override peerPackage = 'handlebars';
 
-    private options: Handlebars.ParseOptions;
+    private instance?: any;
 
-    constructor(options?: EngineOptions<Handlebars.ParseOptions>) {
+    constructor(
+        private readonly options: Record<string, any> = {},
+        private readonly customOptions: CustomEngineOptions = {},
+    ) {
         super();
-        this.options = options || {};
+    }
+
+    /** Isolated Handlebars instance with custom filters registered as helpers. */
+    private async getInstance(): Promise<any> {
+        if (this.instance) return this.instance;
+
+        const mod = await loadPeer<any>('handlebars', 'hbs', 'template');
+        const Handlebars = mod.default ?? mod;
+        const instance = typeof Handlebars.create === 'function' ? Handlebars.create() : Handlebars;
+
+        for (const [name, fn] of Object.entries(this.customOptions.filters ?? {})) {
+            instance.registerHelper(name, fn);
+        }
+
+        this.instance = instance;
+        return instance;
     }
 
     async render(content: string, data?: Record<string, any>): Promise<string> {
-        try {
-            const Handlebars = await import('handlebars');
-            const template = Handlebars.compile(content, this.options);
-            return template(data);
-        } catch (error: any) {
-            throw new Error(`Failed to render Handlebars template: ${error?.message || 'Unknown error'}`);
-        }
+        const Handlebars = await this.getInstance();
+        const template = Handlebars.compile(content, this.options);
+        return template({ ...this.customOptions.globals, ...data });
     }
 
     async validate(content: string): Promise<boolean> {
         try {
-            const Handlebars = await import('handlebars');
+            const Handlebars = await this.getInstance();
             Handlebars.precompile(content, this.options);
             return true;
-        } catch (error) {
+        } catch {
             return false;
         }
     }

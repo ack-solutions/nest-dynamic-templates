@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { TemplateEngineEnum, TemplateLanguageEnum } from '../interfaces/template.types';
 import { NunjucksEngine } from '../engines/template/nunjucks.engine';
 import { MjmlEngine } from '../engines/language/mjml.engine';
@@ -7,67 +7,65 @@ import { MarkdownEngine, TextEngine } from '../engines/language';
 import { EjsEngine } from '../engines/template/ejs.engine';
 import { HandlebarsEngine } from '../engines/template/handlebars.engine';
 import { PugEngine } from '../engines/template/pug.engine';
-import { TemplateConfigService } from './template-config.service';
 import { TemplateEngine } from '../engines/template-engine';
 import { LanguageEngine } from '../engines/language-engine';
-import { NestDynamicTemplatesModuleConfig } from '../interfaces/module-config.interface';
+import type {
+    CustomEngineOptions,
+    ResolvedTemplatesConfig,
+} from '../interfaces/module-config.interface';
+import { NEST_DYNAMIC_TEMPLATES_OPTIONS } from '../constant';
+import { TemplateEngineUnavailableError } from '../errors/template.errors';
 
-type ClassType<T> = new (...args: any[]) => T;
+type TemplateEngineClass = (new (options?: any, custom?: CustomEngineOptions) => TemplateEngine) & {
+    engineName: TemplateEngineEnum;
+};
+type LanguageEngineClass = (new (options?: any) => LanguageEngine) & {
+    engineName: TemplateLanguageEnum;
+};
+
+/** All engines the library knows how to build. Only enabled ones are instantiated. */
+const TEMPLATE_ENGINES: TemplateEngineClass[] = [NunjucksEngine, HandlebarsEngine, EjsEngine, PugEngine];
+const LANGUAGE_ENGINES: LanguageEngineClass[] = [MjmlEngine, HtmlEngine, TextEngine, MarkdownEngine];
 
 @Injectable()
 export class TemplateEngineRegistryService {
-    private templateEngines: Map<TemplateEngineEnum, TemplateEngine> = new Map();
-    private languageEngines: Map<TemplateLanguageEnum, LanguageEngine> = new Map();
-    private config: NestDynamicTemplatesModuleConfig;
+    private readonly templateEngines = new Map<TemplateEngineEnum, TemplateEngine>();
+    private readonly languageEngines = new Map<TemplateLanguageEnum, LanguageEngine>();
 
-    constructor() {
-        this.config = TemplateConfigService.getOptions();
-
-        this.registerTemplateEngines([
-            NunjucksEngine,
-            HandlebarsEngine,
-            EjsEngine,
-            PugEngine
-        ]);
-
-
-        this.registerLanguageEngines([
-            MjmlEngine,
-            HtmlEngine,
-            TextEngine,
-            MarkdownEngine
-        ]);
+    constructor(
+        @Inject(NEST_DYNAMIC_TEMPLATES_OPTIONS)
+        private readonly config: ResolvedTemplatesConfig,
+    ) {
+        this.registerEnabledEngines();
     }
 
-    registerTemplateEngines(engineClasses: ClassType<TemplateEngine>[]): void {
-        engineClasses.forEach(EngineClass => {
-            const engineName = (EngineClass as any).engineName;
-            if (!engineName) {
-                throw new Error(`Engine class ${EngineClass.name} must define static engineName property`);
-            }
-            const options = (this.config.enginesOptions?.template as any)?.[engineName];
+    private registerEnabledEngines(): void {
+        const custom: CustomEngineOptions = {
+            filters: this.config.filters,
+            globals: this.config.globals,
+        };
 
-            const customOptions = {
-                filters: this.config.enginesOptions?.filters,
-                globalValues: this.config.enginesOptions?.globalValues
-            }
+        for (const Engine of TEMPLATE_ENGINES) {
+            if (!this.config.engines.template.includes(Engine.engineName)) continue;
+            const options = this.config.engineOptions.template[Engine.engineName];
+            this.templateEngines.set(Engine.engineName, new Engine(options, custom));
+        }
 
-            this.registerTemplateEngine(engineName, new EngineClass(options, customOptions));
-        });
-    }
-
-    registerTemplateEngine(format: TemplateEngineEnum, engine: TemplateEngine): void {
-        this.templateEngines.set(format, engine);
-    }
-
-    registerLanguageEngine(format: TemplateLanguageEnum, engine: LanguageEngine): void {
-        this.languageEngines.set(format, engine);
+        for (const Engine of LANGUAGE_ENGINES) {
+            if (!this.config.engines.language.includes(Engine.engineName)) continue;
+            const options = this.config.engineOptions.language[Engine.engineName];
+            this.languageEngines.set(Engine.engineName, new Engine(options));
+        }
     }
 
     getTemplateEngine(format: TemplateEngineEnum): TemplateEngine {
         const engine = this.templateEngines.get(format);
         if (!engine) {
-            throw new Error(`Template engine not found for format: ${format}`);
+            throw new TemplateEngineUnavailableError({
+                engine: format,
+                kind: 'template',
+                reason: 'not-enabled',
+            });
         }
         return engine;
     }
@@ -75,20 +73,13 @@ export class TemplateEngineRegistryService {
     getLanguageEngine(format: TemplateLanguageEnum): LanguageEngine {
         const engine = this.languageEngines.get(format);
         if (!engine) {
-            throw new Error(`Language engine not found for format: ${format}`);
+            throw new TemplateEngineUnavailableError({
+                engine: format,
+                kind: 'language',
+                reason: 'not-enabled',
+            });
         }
         return engine;
-    }
-
-    registerLanguageEngines(engineClasses: ClassType<LanguageEngine>[]): void {
-        engineClasses.forEach(EngineClass => {
-            const engineName = (EngineClass as any).engineName;
-            if (!engineName) {
-                throw new Error(`Engine class ${EngineClass.name} must define static engineName property`);
-            }
-            const options = (this.config.enginesOptions?.language as any)?.[engineName];
-            this.registerLanguageEngine(engineName, new EngineClass(options));
-        });
     }
 
     hasTemplateEngine(format: TemplateEngineEnum): boolean {
@@ -100,10 +91,10 @@ export class TemplateEngineRegistryService {
     }
 
     getSupportedTemplateFormats(): TemplateEngineEnum[] {
-        return Array.from(this.templateEngines.keys());
+        return [...this.templateEngines.keys()];
     }
 
     getSupportedLanguageFormats(): TemplateLanguageEnum[] {
-        return Array.from(this.languageEngines.keys());
+        return [...this.languageEngines.keys()];
     }
 }

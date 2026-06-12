@@ -26,9 +26,7 @@ describe('Nunjucks Engine', () => {
 
     beforeEach(async () => {
         const moduleRef = await createTestModule({
-            enginesOptions: {
-                filters: engineFilters
-            }
+            filters: engineFilters
         });
 
         service = moduleRef.get<TemplateService>(TemplateService);
