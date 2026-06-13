@@ -1,251 +1,136 @@
 # @ackplus/nest-dynamic-templates
 
 <p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
+  <a href="https://nestjs.com/" target="_blank"><img src="https://nestjs.com/img/logo-small.svg" width="110" alt="NestJS logo" /></a>
 </p>
 
-<p align="center">A powerful and flexible database seeding library for NestJS applications</p>
+<p align="center">Database-backed, multi-engine template rendering for NestJS — with error messages that actually tell you what went wrong.</p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@ackplus/nest-dynamic-templates"><img src="https://img.shields.io/npm/v/@ackplus/nest-dynamic-templates.svg" alt="NPM Version" /></a>
-  <a href="https://www.npmjs.com/package/@ackplus/nest-dynamic-templates"><img src="https://img.shields.io/npm/l/@ackplus/nest-dynamic-templates.svg" alt="Package License" /></a>
-  <a href="https://www.npmjs.com/package/@ackplus/nest-dynamic-templates"><img src="https://img.shields.io/npm/dm/@ackplus/nest-dynamic-templates.svg" alt="NPM Downloads" /></a>
+  <a href="https://www.npmjs.com/package/@ackplus/nest-dynamic-templates"><img src="https://img.shields.io/npm/v/@ackplus/nest-dynamic-templates.svg" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/@ackplus/nest-dynamic-templates"><img src="https://img.shields.io/npm/dm/@ackplus/nest-dynamic-templates.svg" alt="npm downloads" /></a>
+  <a href="https://www.npmjs.com/package/@ackplus/nest-dynamic-templates"><img src="https://img.shields.io/npm/l/@ackplus/nest-dynamic-templates.svg" alt="license" /></a>
+  <a href="https://ack-solutions.github.io/nest-dynamic-templates/"><img src="https://img.shields.io/badge/docs-online-10b981.svg" alt="documentation" /></a>
 </p>
 
-## 📦 About
+<p align="center">
+  <strong><a href="https://ack-solutions.github.io/nest-dynamic-templates/">📖 Documentation</a></strong> ·
+  <a href="https://www.npmjs.com/package/@ackplus/nest-dynamic-templates">📦 npm</a> ·
+  <a href="./packages/nest-dynamic-templates/MIGRATION.md">🔀 Migration (v2)</a> ·
+  <a href="./packages/nest-dynamic-templates/CHANGELOG.md">📝 Changelog</a>
+</p>
 
-`@ackplus/nest-dynamic-templates` is a CLI-based database seeding solution for NestJS applications. Generate and seed realistic test data with ease using factories, Faker.js, and a simple command-line interface.
+---
 
-### Key Features
+Store templates in your **database** and render them at runtime with the engine of your choice (Nunjucks, Handlebars, EJS, Pug), then post-process the output as HTML, MJML, Markdown or plain text. Built for transactional email, notifications, PDFs, and any per-tenant / per-locale content.
 
-- 🖥️ **CLI-First** - Simple commands, no app code changes needed
-- 🏭 **Factory Pattern** - Generate realistic data with Faker.js decorators
-- 🔄 **Multiple ORMs** - Works with TypeORM, Mongoose, and Prisma
-- 🎯 **Selective Seeding** - Run specific seeders or all at once
-- 🔥 **Refresh Mode** - Drop and reseed with one command
-- 📦 **Batch Operations** - Efficient bulk data insertion
-- ✅ **Type-Safe** - Full TypeScript support
+## Features
 
-## 📦 Installation
+- 🧩 **Two-stage pipeline** — a template engine interpolates variables, then a language processor produces the final markup (e.g. Nunjucks → MJML).
+- 🗄️ **Database storage** — templates and layouts live in your DB via TypeORM, editable at runtime.
+- 🌍 **Scope & locale resolution** — ship `system` defaults and override them per tenant/user and per language, with automatic fallback.
+- 🪶 **Lightweight & lazy** — only the engines you enable are loaded, so you only install the peers you use.
+- 🛑 **Diagnostic errors** — a failed render reports the missing variable, the source line, the context keys you passed, and a fix hint.
+
+## Install
 
 ```bash
-npm install @ackplus/nest-dynamic-templates @faker-js/faker
-npm install -D ts-node typescript
+npm install @ackplus/nest-dynamic-templates @nestjs/typeorm typeorm reflect-metadata
+# then install only the engines you enable, e.g.:
+npm install nunjucks mjml
 ```
 
-## 🚀 Quick Example
+## Quick start
 
-**1. Create a factory:**
-
-```typescript
-// src/factories/user.factory.ts
-import { Factory } from '@ackplus/nest-dynamic-templates';
-
-export class UserFactory {
-  @Factory((faker) => faker.person.fullName())
-  name: string;
-
-  @Factory((faker) => faker.internet.email())
-  email: string;
-}
-```
-
-**2. Create a seeder:**
+**1. Register the module:**
 
 ```typescript
-// src/seeders/user.seeder.ts
-import { Injectable } from '@nestjs/common';
-import { Seeder, DataFactory } from '@ackplus/nest-dynamic-templates';
+import { NestDynamicTemplatesModule, TemplateEngineEnum, TemplateLanguageEnum } from '@ackplus/nest-dynamic-templates';
 
-@Injectable()
-export class UserSeeder implements Seeder {
-  constructor(@InjectRepository(User) private repo: Repository<User>) {}
-
-  async seed(): Promise<void> {
-    const factory = DataFactory.createForClass(UserFactory);
-    const users = factory.generate(10);
-    await this.repo.save(users);
-  }
-
-  async drop(): Promise<void> {
-    await this.repo.delete({});
-  }
-}
-```
-
-**3. Create config file (`seeder.config.ts` in project root):**
-
-```typescript
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { User } from './src/entities/user.entity';
-import { UserSeeder } from './src/seeders/user.seeder';
-
-export default {
+@Module({
   imports: [
-    TypeOrmModule.forRoot({ /* db config */ }),
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forRoot({ /* ...db, */ autoLoadEntities: true }),
+    NestDynamicTemplatesModule.forRoot({
+      isGlobal: true,
+      // Defaults if omitted: template ['njk'], language ['html', 'mjml', 'txt'].
+      engines: { template: [TemplateEngineEnum.NUNJUCKS], language: [TemplateLanguageEnum.HTML, TemplateLanguageEnum.MJML] },
+    }),
   ],
-  seeders: [UserSeeder],
-};
+})
+export class AppModule {}
 ```
 
-**4. Add script and run:**
+**2. Create a template, then render it** (inject `TemplateService`):
 
-```json
-{
-  "scripts": {
-    "seed": "nest-seed -c seeder.config.ts"
-  }
-}
+```typescript
+await templateService.createTemplate({
+  name: 'welcome-email',
+  displayName: 'Welcome email',
+  engine: TemplateEngineEnum.NUNJUCKS,
+  language: TemplateLanguageEnum.HTML,
+  subject: 'Welcome, {{ firstName }}!',
+  content: '<h1>Hello {{ firstName }}</h1>',
+});
+
+const { subject, content } = await templateService.render({
+  name: 'welcome-email',
+  context: { firstName: 'Ada' },
+});
 ```
 
-```bash
-npm run seed
-```
+See the **[full guide](https://ack-solutions.github.io/nest-dynamic-templates/guide/getting-started)** for configuration, scopes & locales, layouts, and the error model.
 
-**Done! 🎉**
+## Documentation
 
-## 📚 Documentation
+- 📖 **[Documentation site](https://ack-solutions.github.io/nest-dynamic-templates/)** — guides, configuration, recipes
+- 🧱 **[Template fields](https://ack-solutions.github.io/nest-dynamic-templates/reference/template-fields)** — every column explained, incl. `scope`/`scopeId`
+- 🛑 **[Error handling](https://ack-solutions.github.io/nest-dynamic-templates/guide/errors)** — diagnostic render errors
+- 📦 **[Package README](./packages/nest-dynamic-templates/README.md)** — the npm-facing docs
+- 🔀 **[Migration to v2](./packages/nest-dynamic-templates/MIGRATION.md)** · 📝 **[Changelog](./packages/nest-dynamic-templates/CHANGELOG.md)**
 
-### Package Documentation
+## Repository layout
 
-- **[📖 Complete Documentation](./packages/nest-dynamic-templates/README.md)** - Full guide with all features and examples
-- **[⚡ Quick Start (5 min)](./packages/nest-dynamic-templates/QUICKSTART.md)** - Get up and running fast
-- **[🤝 Contributing Guide](./packages/nest-dynamic-templates/CONTRIBUTING.md)** - Help improve the project
-- **[📁 Examples](./packages/nest-dynamic-templates/examples/)** - Template files you can copy
-
-### Example Application
-
-See a complete working example:
-- **[Example App](./apps/example-app/)** - TypeORM + SQLite with tests
-- Run: `cd apps/example-app && pnpm seed`
-
-## 🛠️ Local Development
-
-This section is for contributors working on the package itself.
-
-### Setup
-
-```bash
-# Clone repository
-git clone https://github.com/ackplus/nest-dynamic-templates.git
-cd nest-dynamic-templates
-
-# Install dependencies
-pnpm install
-
-# Build package
-pnpm -C packages/nest-dynamic-templates build
-
-# Run tests
-pnpm -C apps/example-app test
-```
-
-### Project Structure
+This is a pnpm monorepo:
 
 ```
 nest-dynamic-templates/
 ├── packages/
-│   └── nest-dynamic-templates/          # 📦 Main package
-│       ├── src/              # Source code
-│       ├── dist/             # Compiled output
-│       ├── examples/         # Example templates
-│       └── README.md         # Package documentation
+│   └── nest-dynamic-templates/   # 📦 the published library
 ├── apps/
-│   └── example-app/          # 🧪 Example application
-│       ├── src/              # Working example
-│       └── seeder.config.ts  # CLI configuration
-├── scripts/
-│   └── publish.js            # Publishing script
-└── package.json              # Root workspace
+│   └── example-app/              # 🧪 runnable NestJS example (render + diagnostic errors)
+└── docs/                         # 📖 VitePress documentation site (GitHub Pages)
 ```
 
-### Development Workflow
+## Local development
 
 ```bash
-# Build package
-pnpm -C packages/nest-dynamic-templates build
+# Install dependencies
+pnpm install
 
-# Run example app
-cd apps/example-app
-pnpm seed                # Seed database
-pnpm seed:refresh        # Drop and reseed
-pnpm seed:watch          # Watch mode
-pnpm test                # Run tests
-pnpm start:dev           # Start app
+# Build the library
+pnpm build
 
-# Make changes and test
-pnpm -C packages/nest-dynamic-templates build
-pnpm -C apps/example-app test
+# Run the library test suite
+pnpm -C packages/nest-dynamic-templates exec jest
+
+# Run the example app (after building the library)
+pnpm -C apps/example-app start        # http://localhost:3000 (Swagger at /api)
+
+# Run the docs site locally
+cd docs && npm install && npm run docs:dev
 ```
 
-### Watch Mode (Multi-Terminal)
+## Contributing
 
-For active development, run these in separate terminals:
+Issues and pull requests are welcome — please open them on the [issue tracker](https://github.com/ack-solutions/nest-dynamic-templates/issues). For development setup, see **Local development** above; please make sure `pnpm build` and the test suite pass before opening a PR.
 
-```bash
-# Terminal 1: Build watch
-pnpm -C packages/nest-dynamic-templates build --watch
+## License
 
-# Terminal 2: Test watch
-pnpm -C apps/example-app test:watch
+[MIT](./packages/nest-dynamic-templates/LICENSE) © AckPlus
 
-# Terminal 3: Seed watch
-pnpm -C apps/example-app seed:watch
-```
+## Links
 
-### Publishing
-
-```bash
-# Interactive version bump and publish
-npm run publish
-
-# The script will:
-# 1. Ask for version type (patch/minor/major)
-# 2. Build package
-# 3. Update version
-# 4. Publish to npm
-```
-
-## 🧪 Testing
-
-```bash
-# Package tests
-pnpm -C packages/nest-dynamic-templates test
-
-# Example app tests
-pnpm -C apps/example-app test
-pnpm -C apps/example-app test:cov
-
-# E2E tests
-pnpm -C apps/example-app test:e2e
-```
-
-## 🤝 Contributing
-
-Contributions are welcome! See [Contributing Guide](./packages/nest-dynamic-templates/CONTRIBUTING.md).
-
-**Quick steps:**
-1. Fork the repo
-2. Create a branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Build and test (`pnpm -C packages/nest-dynamic-templates build && pnpm -C apps/example-app test`)
-5. Commit changes (`git commit -m 'Add amazing feature'`)
-6. Push to branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
-
-## 📄 License
-
-MIT License - see [LICENSE](./packages/nest-dynamic-templates/LICENSE)
-
-## 🔗 Links
-
-- **[NPM Package](https://www.npmjs.com/package/@ackplus/nest-dynamic-templates)**
-- **[GitHub Repository](https://github.com/ackplus/nest-dynamic-templates)**
-- **[Full Documentation](./packages/nest-dynamic-templates/README.md)**
-- **[Quick Start Guide](./packages/nest-dynamic-templates/QUICKSTART.md)**
-- **[Issue Tracker](https://github.com/ackplus/nest-dynamic-templates/issues)**
-
----
-
-Made with ❤️ for the NestJS community
+- 📦 [npm package](https://www.npmjs.com/package/@ackplus/nest-dynamic-templates)
+- 📖 [Documentation](https://ack-solutions.github.io/nest-dynamic-templates/)
+- 🐙 [GitHub repository](https://github.com/ack-solutions/nest-dynamic-templates)
+- 🐞 [Issue tracker](https://github.com/ack-solutions/nest-dynamic-templates/issues)

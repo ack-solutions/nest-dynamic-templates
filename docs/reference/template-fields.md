@@ -13,7 +13,7 @@ confidence. If you only read one section, make it **[scope & scopeId](#scope-sco
 | `scopeId` | string | — | `null` | **Which owner** inside that scope, e.g. the tenant id. Empty for `system`. |
 | `locale` | string | — | `en` | Language variant, e.g. `en`, `fr`, `es`. |
 | `engine` | enum | — | `njk` | Template engine that interpolates variables (`njk`, `hbs`, `ejs`, `pug`). |
-| `language` | enum | — | `null` | Output processor (`html`, `mjml`, `md`, `txt`). |
+| `language` | enum | ✅ | — | Output processor (`html`, `mjml`, `md`, `txt`). |
 | `subject` | string | — | `null` | Subject line (emails). Rendered with the engine too. |
 | `content` | text | ✅ | — | The template body. |
 | `templateLayoutName` | string | — | `null` | Name of a layout to wrap this content in. |
@@ -127,7 +127,7 @@ The output processor that runs **after** interpolation:
 - `md` — render Markdown to HTML.
 - `txt` — plain text (SMS, notifications).
 
-Leave it empty to skip post-processing entirely. See [Engines & languages](/guide/engines).
+Required when you create a template — pick the processor that matches your `content` (use `html` if it's already HTML, or `txt` for plain text). See [Engines & languages](/guide/engines).
 
 ### `content`
 

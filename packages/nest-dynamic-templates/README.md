@@ -1,10 +1,15 @@
 # @ackplus/nest-dynamic-templates
 
+[![npm version](https://img.shields.io/npm/v/@ackplus/nest-dynamic-templates.svg)](https://www.npmjs.com/package/@ackplus/nest-dynamic-templates)
+[![npm downloads](https://img.shields.io/npm/dm/@ackplus/nest-dynamic-templates.svg)](https://www.npmjs.com/package/@ackplus/nest-dynamic-templates)
+[![license](https://img.shields.io/npm/l/@ackplus/nest-dynamic-templates.svg)](https://github.com/ack-solutions/nest-dynamic-templates/blob/main/packages/nest-dynamic-templates/LICENSE)
+[![docs](https://img.shields.io/badge/docs-online-10b981.svg)](https://ack-solutions.github.io/nest-dynamic-templates/)
+
 > Database-backed, multi-engine template rendering for NestJS — with **error messages that actually tell you what went wrong**.
 
 Store templates in your database, render them at runtime with the engine of your choice (Nunjucks, Handlebars, EJS, Pug), and post-process the output as HTML, MJML, Markdown or plain text. Built for transactional email, notifications, PDFs and any per-tenant/per-locale content.
 
-📖 **Full documentation:** https://ack-solutions.github.io/nest-dynamic-templates/
+📖 **[Documentation](https://ack-solutions.github.io/nest-dynamic-templates/)** · 🐙 **[GitHub](https://github.com/ack-solutions/nest-dynamic-templates)** · 🔀 **[Migration (v2)](./MIGRATION.md)** · 📝 **[Changelog](./CHANGELOG.md)**
 
 ---
 
@@ -35,6 +40,8 @@ Then install **only the engines you enable**:
 | `mjml` (email) | `npm install mjml` |
 | `md` (Markdown) | `npm install marked` |
 | `html`, `txt` | nothing — built in |
+
+> **Enabled by default** (if you omit `engines`): template `['njk']`, language `['html', 'mjml', 'txt']`. Install the peers for whatever you enable.
 
 ## Quick start
 
@@ -235,7 +242,7 @@ A template is a database row. The key fields (full reference with use cases in t
 | `scopeId` | — | `null` | **Which owner** inside the scope (e.g. the tenant id). Empty for `system`. |
 | `locale` | — | `en` | Language variant; missing locales fall back to `en`. |
 | `engine` | — | `njk` | Template engine: `njk`, `hbs`, `ejs`, `pug`. |
-| `language` | — | `null` | Output processor: `html`, `mjml`, `md`, `txt`. |
+| `language` | ✅ | — | Output processor: `html`, `mjml`, `md`, `txt`. |
 | `subject` | — | `null` | Subject line (emails); rendered with the engine. |
 | `content` | ✅ | — | The template body. |
 | `templateLayoutName` | — | `null` | Layout to wrap this content in. |
